@@ -78,9 +78,9 @@ with open(config.TXT_FILE_PATH, "r", encoding="utf-8") as file:
 sentences = split_text(text)
 
 # 保存到 CSV
-with open(config.CSV_FILE_PATH, "w", encoding="utf-8-sig", newline="") as file:
+with open(config.SENTENCE_SPLIT_FILE_PATH, "w", encoding="utf-8-sig", newline="") as file:
     writer = csv.writer(file, delimiter=config.CSV_DELIMITER)
     for sentence in sentences:
         writer.writerow([sentence])
 
-print(f"处理完成，结果已保存至 {config.CSV_FILE_PATH}")
+print(f"处理完成，结果已保存至 {config.SENTENCE_SPLIT_FILE_PATH}")
