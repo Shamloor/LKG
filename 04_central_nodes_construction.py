@@ -1,19 +1,12 @@
 import json
 from neo4j import GraphDatabase
-
-# **Neo4j 连接信息**
-URI = "bolt://localhost:7687"  # 默认 Bolt 端口
-USERNAME = "neo4j"  # 你的用户名
-PASSWORD = "12345678"  # 你的密码（请替换）
+import config
 
 # **Neo4j 连接**
-driver = GraphDatabase.driver(URI, auth=(USERNAME, PASSWORD))
-
-# **JSON 文件路径**
-json_file_path = "./DATA/summary/罪与罚 第一部 第一章(summary).json"
+driver = GraphDatabase.driver(config.NEO4J_URI, auth=(config.NEO4J_USERNAME, config.NEO4J_PASSWORD))
 
 # **读取 JSON 文件**
-with open(json_file_path, "r", encoding="utf-8") as f:
+with open(config.JSON_FILE_PATH, "r", encoding="utf-8") as f:
     summary_events = json.load(f)
 
 # **确保 JSON 里有 "事件" 列表**

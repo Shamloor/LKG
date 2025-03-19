@@ -1,16 +1,13 @@
 import pandas as pd
 import json
-from openai import OpenAI
-
-csv_file_path = "./DATA/processed/罪与罚 第一部 第一章(processed).csv"
-output_json_path = "./DATA/summary/罪与罚 第一部 第一章(summary).json"
+import config
 
 # 先清空 JSON 文件，防止旧数据影响
-with open(output_json_path, "w", encoding="utf-8") as f:
+with open(config.JSON_FILE_PATH, "w", encoding="utf-8") as f:
     json.dump([], f, ensure_ascii=False, indent=4)
 
 # 读取 CSV，指定 `|` 作为分隔符
-df = pd.read_csv(csv_file_path, sep="|")
+df = pd.read_csv(config.CSV_FILE_PATH, sep="|")
 
 # 确保 "段" 和 "内容" 列存在
 if "段" not in df.columns or "内容" not in df.columns:
@@ -18,10 +15,6 @@ if "段" not in df.columns or "内容" not in df.columns:
 
 # 拼接所有段落，并带上段落编号，格式："1. 段落内容"
 text = "\n".join([f"{row['段']}. {row['内容']}" for _, row in df.iterrows()])
-
-# 设置 OpenAI API 客户端（Deepseek API）
-client = OpenAI(api_key="sk-969b6309421740869719b25527b46e41",
-                base_url="https://dashscope.aliyuncs.com/compatible-mode/v1")
 
 # 构造 API 请求，要求返回 JSON 格式的事件总结
 prompt = f"""
@@ -47,7 +40,7 @@ prompt = f"""
 """
 
 # ️ 调用 API
-response = client.chat.completions.create(
+response = config.CLIENT.chat.completions.create(
     model="deepseek-v3",
     messages=[
         {"role": "user", "content": prompt},
@@ -64,7 +57,7 @@ except json.JSONDecodeError:
     summary_events = []
 
 # 保存总结结果为 JSON 文件
-with open(output_json_path, "w", encoding="utf-8") as f:
+with open(config.JSON_FILE_PATH, "w", encoding="utf-8") as f:
     json.dump(summary_events, f, ensure_ascii=False, indent=4)
 
-print(f"总结已保存到 {output_json_path}")
+print(f"总结已保存到 {config.JSON_FILE_PATH}")

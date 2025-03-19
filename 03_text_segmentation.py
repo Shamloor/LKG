@@ -1,19 +1,17 @@
 import pandas as pd
 import json
 
-# 文件路径
-csv_file_path = "./DATA/processed/罪与罚 第一部 第一章(processed).csv"
-json_file_path = "./DATA/summary/罪与罚 第一部 第一章(summary).json"
+import config
 
 # 读取 CSV 文件
-df = pd.read_csv(csv_file_path, sep="|")
+df = pd.read_csv(config.CSV_FILE_PATH, sep=config.CSV_DELIMITER)
 
 # 确保 "段" 和 "特殊" 列存在
 if "段" not in df.columns or "特殊" not in df.columns:
     raise ValueError("CSV 文件中缺少 '段' 或 '特殊' 列，请检查文件格式！")
 
 # 读取 JSON 文件
-with open(json_file_path, "r", encoding="utf-8") as f:
+with open(config.JSON_FILE_PATH, "r", encoding="utf-8") as f:
     summary_events = json.load(f)
 
 # **清空 CSV 的 "特殊" 列**
@@ -34,6 +32,6 @@ for event in summary_events:
             df.loc[df["段"] == start_paragraph, "特殊"] = event_text
 
 # **保存更新后的 CSV**
-df.to_csv(csv_file_path, sep="|", index=False)
+df.to_csv(config.CSV_FILE_PATH, sep=config.CSV_DELIMITER, index=False)
 
-print(f"CSV 文件已更新，'特殊' 列已填充事件: {csv_file_path}")
+print(f"CSV 文件已更新，'特殊' 列已填充事件: {config.CSV_FILE_PATH}")
