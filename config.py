@@ -9,7 +9,9 @@ API_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 CLIENT = OpenAI(api_key=API_KEY, base_url=API_BASE_URL)
 
 TXT_FILE_PATH = "./DATA/original/罪与罚 第一部 第一章(original).txt"
+#TXT_FILE_PATH = "./DATA/original/tmp.txt"
 CSV_FILE_PATH = "./DATA/processed/罪与罚 第一部 第一章(processed).csv"
+#CSV_FILE_PATH = "./DATA/processed/tmp.csv"
 JSON_FILE_PATH = "./DATA/summary/罪与罚 第一部 第一章(summary).json"
 TMP_FILE_PATH = "./DATA/tmp/暂时文件.json"
 
