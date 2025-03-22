@@ -1,12 +1,12 @@
 import csv
-import json
 import config
 
 ner_results = []
 
-with open(config.SENTENCE_SPLIT_FILE_PATH, "r", encoding=config.CSV_ENCODING) as file:
+with open(config.PROCESSED_FILE_PATH, "r", encoding=config.CSV_ENCODING) as file:
     reader = csv.DictReader(file, delimiter=config.CSV_DELIMITER)
     rows = list(reader)
+    fieldnames = reader.fieldnames
 
 
 for row in rows:
@@ -28,3 +28,10 @@ for row in rows:
               \n返回示例：{"命名实体": [{"文本": "年轻人", "类型": "人物"}, {"文本": "小屋", "类型": "地点"}]}''')
     response = config.llm_api(prompt)
     print(text + "\n" + response)
+    row["命名实体"] = response
+
+with open(config.PROCESSED_FILE_PATH, "w", encoding=config.CSV_ENCODING, newline='') as file:
+    writer = csv.DictWriter(file, fieldnames=fieldnames, delimiter=config.CSV_DELIMITER)
+    writer.writeheader()
+    writer.writerows(rows)
+

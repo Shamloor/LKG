@@ -1,5 +1,6 @@
 import re
 import json
+import pandas as pd
 from openai import OpenAI
 
 NEO4J_URI = "bolt://localhost:7687"
@@ -10,14 +11,8 @@ API_KEY = "sk-969b6309421740869719b25527b46e41"
 API_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 CLIENT = OpenAI(api_key=API_KEY, base_url=API_BASE_URL)
 
-#TXT_FILE_PATH = "DATA/original/罪与罚 第一部 第一章(original).txt"
-TXT_FILE_PATH = "DATA/original/tmp.txt"
-#SENTENCE_SPLIT_FILE_PATH = "DATA/split/罪与罚 第一部 第一章(split).csv"
-SENTENCE_SPLIT_FILE_PATH = "DATA/split/tmp.csv"
-#NER_FILE_PATH = "DATA/ner/罪与罚 第一部 第一章(ner).csv"
-NER_FILE_PATH = "DATA/ner/tmp.csv"
-RE_FILE_PATH = "DATA/re/罪与罚 第一部 第一章(re).csv"
-TMP_FILE_PATH = "DATA/tmp/暂时文件.json"
+ORIGINAL_FILE_PATH = "DATA/original/tmp.txt"
+PROCESSED_FILE_PATH = "DATA/processed/tmp.csv"
 
 CSV_DELIMITER = "|"
 CSV_ENCODING = "utf-8-sig"
@@ -32,16 +27,17 @@ def llm_api(prompt):
     )
     return response.choices[0].message.content
 
-def clean_api_response(api_response):
-    match = re.search(r'{"命名实体":\s*\[.*?\]}', api_response, re.DOTALL)
+def read_processed_csv():
+    return pd.read_csv(
+        PROCESSED_FILE_PATH,
+        encoding=CSV_ENCODING,
+        delimiter=CSV_DELIMITER
+    )
 
-    if match:
-        clean_json = match.group(0)
-        try:
-            return json.loads(clean_json)
-        except json.JSONDecodeError:
-            print("JSON 解析失败，可能仍有格式问题")
-            return None
-    else:
-        print("未找到有效 JSON 结构")
-        return None
+def write_processed_csv(df):
+    df.to_csv(
+        PROCESSED_FILE_PATH,
+        index=False,
+        encoding=CSV_ENCODING,
+        sep=CSV_DELIMITER
+    )
