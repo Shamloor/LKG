@@ -1,6 +1,6 @@
-import csv
 import re
 import config
+import pandas as pd
 
 # 正则：句子结束符（带括号表示捕获，用于后续拼接）
 SENTENCE_ENDINGS = re.compile(r'([。？！])')
@@ -53,18 +53,17 @@ def split_text(text):
 
     return sentences
 
-
 # 读取文本
-with open(config.ORIGINAL_FILE_PATH, "r", encoding="utf-8") as file:
-    text = file.read()
+text = config.read_original_text()
 
 # 处理文本
-sentences = split_text(text)
+lines = split_text(text)
 
-# 保存到 CSV
-with open(config.PROCESSED_FILE_PATH, "w", encoding="utf-8-sig", newline="") as file:
-    writer = csv.writer(file, delimiter=config.CSV_DELIMITER)
-    for sentence in sentences:
-        writer.writerow([sentence])
+# 构建 DataFrame
+df = config.create_empty_processed_df(len(lines))
+df["内容"] = lines
+
+# 写入处理结果
+config.write_processed_csv(df)
 
 print(f"处理完成，结果已保存至 {config.PROCESSED_FILE_PATH}")

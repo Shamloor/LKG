@@ -1,6 +1,5 @@
-import re
-import json
 import pandas as pd
+from neo4j import GraphDatabase
 from openai import OpenAI
 
 NEO4J_URI = "bolt://localhost:7687"
@@ -27,6 +26,20 @@ def llm_api(prompt):
     )
     return response.choices[0].message.content
 
+def read_original_text():
+    with open(ORIGINAL_FILE_PATH, "r", encoding="utf-8") as file:
+        return file.read()
+
+def create_empty_processed_df(length):
+    return pd.DataFrame({
+        "索引": ["" for _ in range(length)],
+        "内容": ["" for _ in range(length)],
+        "命名实体": ["" for _ in range(length)],
+        "关系事实": ["" for _ in range(length)],
+        "标签": ["" for _ in range(length)]
+    })
+
+
 def read_processed_csv():
     return pd.read_csv(
         PROCESSED_FILE_PATH,
@@ -41,3 +54,9 @@ def write_processed_csv(df):
         encoding=CSV_ENCODING,
         sep=CSV_DELIMITER
     )
+
+def neo4j_connection():
+    return GraphDatabase.driver(
+    NEO4J_URI,
+    auth=(NEO4J_USERNAME, NEO4J_PASSWORD)
+)
