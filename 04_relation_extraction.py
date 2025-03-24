@@ -1,6 +1,5 @@
 import json
 import re
-import pandas as pd
 import config
 
 # 加载数据
@@ -10,7 +9,8 @@ df["关系事实"] = None
 for i, row in df.iterrows():
     content = row["内容"]
     try:
-        raw_entities = json.loads(row["命名实体"])
+        parsed = json.loads(row["命名实体"])
+        raw_entities = parsed["命名实体"]
     except Exception as e:
         print(f"第{i}行命名实体解析失败: {e}")
         continue
@@ -30,44 +30,50 @@ for i, row in df.iterrows():
 
     # 构造 prompt
     prompt = f"""以下是文本内容：
-{content}
-
-这是文本中的命名实体（已加临时索引）：
-{json.dumps(indexed_entities, ensure_ascii=False, indent=2)}
-
-请根据上述文本和实体，抽取所有存在的关系，并使用"索引 - 关系(方向) - 索引"的形式输出。
-如果没有关系，请返回空。
-"""
+    \n{content}
+    \n这是文本中的命名实体（已加临时索引）：
+    \n{json.dumps(indexed_entities, ensure_ascii=False, indent=2)}
+    \n请根据上述文本和实体，抽取所有存在的关系，返回一个 JSON 数组，数组中的每一项表示一条关系，其格式如下：
+    \n{{"head": "实体索引（如E1）","relation": "关系动词","direction": "方向符号","tail": "实体索引（如E2）"}}
+    \n请注意，"relation" 字段中的关系动词必须使用简体中文表达。
+    \n另外，其中方向符号有三种符号，'>' 表示 head -> tail，'<' 表示 head <- tail"，'-'表示没有方向或判断不出方向。
+    \n例如：[{{"head": "E1", "relation": "走进", "direction": ">", "tail": "E2"}}]
+    \n如果命名实体间不存在任何关系，请返回空数组：[]
+    \n请按JSON格式返回纯文本，不要返回Markdown格式内容，不要添加格式以外信息。"""
 
     valid_indexes = {ent["index"] for ent in indexed_entities}
     index2entity = {ent["index"]: ent for ent in indexed_entities}
 
     for attempt in range(3):
         response = config.llm_api(prompt)
-        relations = []
-        error = False
 
-        for line in response.strip().split("\n"):
-            match = re.match(r"(E\d+)\s*-\s*(.+?)\((.+?)\)\s*-\s*(E\d+)", line)
-            if not match:
+        try:
+            parsed = json.loads(response)
+            print(parsed)
+            if not isinstance(parsed, list):
+                raise ValueError("返回结果不是JSON数组")
+        except Exception as e:
+            print(f"第{i}行第{attempt + 1}次返回非JSON数组格式，重试中... 错误信息: {e}")
+            continue
+
+        error = False
+        relations = []
+        for rel in parsed:
+            if not all(k in rel for k in ["head", "relation", "direction", "tail"]):
                 error = True
                 break
-            head, relation, direction, tail = match.groups()
+            head = rel["head"]
+            tail = rel["tail"]
             if head not in valid_indexes or tail not in valid_indexes:
                 error = True
                 break
-            relations.append({
-                "head": head,
-                "relation": relation,
-                "direction": direction,
-                "tail": tail
-            })
+            relations.append(rel)
 
         if error:
-            print(f"第{i}行第{attempt+1}次返回格式或索引错误，重试中...")
+            print(f"第{i}行第{attempt + 1}次返回包含非法索引或字段缺失，重试中...")
             continue
 
-        # 构造不含索引的“关系事实”
+        # 构造“关系事实”字段（不保留临时索引）
         relation_facts = {
             "关系事实": [
                 {
@@ -94,7 +100,7 @@ for i, row in df.iterrows():
         print(f"第{i}行超过最大重试次数，跳过。")
 
 # 保存结果
-df.to_csv("data_with_relations.csv", index=False, encoding="utf-8-sig")
-print("关系抽取完成，结果已保存到 data_with_relations.csv")
+config.write_processed_csv(df)
+print("关系抽取完成，结果已保存")
 
 
