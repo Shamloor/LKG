@@ -1,76 +1,119 @@
 import json
 import config
 
-driver = config.neo4j_connection()
+def process_relations_and_generate_graph_data():
+    """
+    从CSV中提取每行关系事实，构建顺序节点、实体节点、边结构
+    :return: (sequence_nodes, entity_nodes, edge_list)
+    """
+    df = config.read_processed_csv()
 
-# 读取处理好的 DataFrame
-df = config.read_processed_csv()
+    sequence_nodes = []
+    entity_nodes = []
+    edge_list = []
+    last_sequence_id = None
+    skipped_count = 0
 
+    for idx, row in df.iterrows():
+        sequence_id = f"s{idx + 1}"
+        sequence_nodes.append({"id": sequence_id, "type": "Sequence"})
 
-# 清空数据库（可选）
-def clear_database(tx):
-    tx.run("MATCH (n) DETACH DELETE n")
+        # 获取关系事实列
+        raw_value = row["关系事实"]
 
-
-# 创建顺序节点
-def create_sequence_node(tx, index):
-    tx.run("MERGE (s:Step {索引: $index})", index=index)
-
-
-# 创建实体节点和三元组关系
-def create_triple(tx, h, r, t, step_index):
-    # 创建实体
-    tx.run("MERGE (h:Entity {name: $h})", h=h)
-    tx.run("MERGE (t:Entity {name: $t})", t=t)
-
-    # 创建三元组关系
-    tx.run("""
-        MATCH (h:Entity {name: $h}), (t:Entity {name: $t})
-        MERGE (h)-[rel:RELATION {type: $r}]->(t)
-    """, h=h, t=t, r=r)
-
-    # 连接到对应顺序节点
-    tx.run("""
-        MATCH (e:Entity), (s:Step {索引: $index})
-        WHERE e.name IN [$h, $t]
-        MERGE (s)-[:include]->(e)
-    """, h=h, t=t, index=step_index)
-
-
-# 创建顺序连接
-def connect_sequence_nodes(tx, from_index, to_index):
-    tx.run("""
-        MATCH (a:Step {索引: $from_index}), (b:Step {索引: $to_index})
-        MERGE (a)-[:next]->(b)
-    """, from_index=from_index, to_index=to_index)
-
-
-# 执行图谱构建
-with driver.session() as session:
-    session.execute_write(clear_database)  # 如不清空，可注释掉
-
-    prev_index = None
-
-    for _, row in df.iterrows():
-        index = row["索引"]
-        step_node_id = f"Index_{index}"
-        triples_json = row["三元组"]
-
-        try:
-            triple_data = json.loads(triples_json)
-            triples = triple_data.get("三元组", [])
-        except Exception as e:
-            print(f"解析三元组失败：索引 {index}, 原始数据: {triples_json}")
+        # 如果该列为空或不是字符串，跳过处理
+        if not isinstance(raw_value, str) or raw_value.strip() == "":
+            print(f"[!] 第{idx + 1}行为空，跳过")
+            skipped_count += 1
             continue
 
-        session.execute_write(create_sequence_node, index)
+        try:
+            relation_json = json.loads(raw_value)
+            relation_list = relation_json["关系事实"]
+        except Exception as e:
+            print(f"[!] 第{idx + 1}行解析失败：{e}")
+            skipped_count += 1
+            continue
 
-        for h, r, t in triples:
-            session.execute_write(create_triple, h, r, t, index)
+        for relation in relation_list:
+            head_text = relation["头实体"]["文本"]
+            head_type = relation["头实体"]["类型"]
+            rel_text  = relation["关系"]["文本"]
+            tail_text = relation["尾实体"]["文本"]
+            tail_type = relation["尾实体"]["类型"]
 
-        if prev_index is not None:
-            session.execute_write(connect_sequence_nodes, prev_index, index)
+            # 每次都生成新的唯一实体 ID
+            head_id = config.generate_entity_id(sequence_id, head_text)
+            tail_id = config.generate_entity_id(sequence_id, tail_text)
 
-        prev_index = index
+            entity_nodes.append({"id": head_id, "text": head_text, "type": head_type})
+            entity_nodes.append({"id": tail_id, "text": tail_text, "type": tail_type})
 
-print("图谱构建完成")
+            edge_list.append({
+                "start": head_id,
+                "rel": rel_text,
+                "end": tail_id
+            })
+
+            edge_list.append({"start": sequence_id, "rel": "include", "end": head_id})
+            edge_list.append({"start": sequence_id, "rel": "include", "end": tail_id})
+
+        # 连接顺序节点
+        if last_sequence_id:
+            edge_list.append({
+                "start": last_sequence_id,
+                "rel": "next",
+                "end": sequence_id
+            })
+        last_sequence_id = sequence_id
+
+    print(f"处理完成，共跳过空行或异常行 {skipped_count} 条。")
+    return sequence_nodes, entity_nodes, edge_list
+
+
+
+def import_graph_to_neo4j(sequence_nodes, entity_nodes, edge_list):
+    driver = config.neo4j_connection()
+
+    with driver.session() as session:
+        # 创建实体节点（动态使用类型作为标签）
+        for node in entity_nodes:
+            label = node["type"]
+            session.run(
+                f"""
+                MERGE (e:`{label}` {{id: $id}})
+                SET e.name = $text
+                """,
+                id=node["id"],
+                text=node["text"]
+            )
+
+        # 创建顺序节点（固定使用 Sequence 标签）
+        for node in sequence_nodes:
+            session.run(
+                """
+                MERGE (s:Sequence {id: $id})
+                SET s.type = $type
+                """,
+                id=node["id"],
+                type=node["type"]
+            )
+
+        # 创建边（动态关系名）
+        for edge in edge_list:
+            session.run(
+                f"""
+                MATCH (a {{id: $start}})
+                MATCH (b {{id: $end}})
+                MERGE (a)-[r:`{edge['rel']}`]->(b)
+                """,
+                start=edge["start"],
+                end=edge["end"]
+            )
+
+    driver.close()
+    print("所有节点和关系已成功导入 Neo4j（节点类型 = 标签）。")
+
+if __name__ == "__main__":
+    seq_nodes, ent_nodes, edges = process_relations_and_generate_graph_data()
+    import_graph_to_neo4j(seq_nodes, ent_nodes, edges)

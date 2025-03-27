@@ -1,6 +1,7 @@
 import pandas as pd
 from neo4j import GraphDatabase
 from openai import OpenAI
+import hashlib
 
 NEO4J_URI = "bolt://localhost:7687"
 NEO4J_USERNAME = "neo4j"
@@ -60,3 +61,12 @@ def neo4j_connection():
     NEO4J_URI,
     auth=(NEO4J_USERNAME, NEO4J_PASSWORD)
 )
+
+def generate_entity_id(sequence_id, text):
+    """
+    基于 sequence_id + 实体文本 生成稳定唯一的哈希 ID
+    用于上下文敏感实体识别（即使 text 一样，不同行也不同）
+    """
+    raw = f"{sequence_id}::{text.strip()}"
+    return hashlib.sha1(raw.encode('utf-8')).hexdigest()
+
