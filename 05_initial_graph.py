@@ -1,6 +1,9 @@
 import json
 import config
 
+import json
+import config
+
 def process_relations_and_generate_graph_data():
     """
     从CSV中提取每行关系事实，构建顺序节点、实体节点、边结构
@@ -16,49 +19,52 @@ def process_relations_and_generate_graph_data():
 
     for idx, row in df.iterrows():
         sequence_id = f"s{idx + 1}"
-        sequence_nodes.append({"id": sequence_id, "type": "Sequence"})
+
+        # 始终构建顺序节点
+        sequence_nodes.append({
+            "id": sequence_id,
+            "type": "Sequence",
+            "text": row["内容"] if "内容" in row and isinstance(row["内容"], str) else ""
+        })
+
+        # 默认当前节点没有处理关系事实
+        processed_relations = False
 
         # 获取关系事实列
-        raw_value = row["关系事实"]
+        raw_value = row.get("关系事实", "")
 
-        # 如果该列为空或不是字符串，跳过处理
-        if not isinstance(raw_value, str) or raw_value.strip() == "":
-            print(f"[!] 第{idx + 1}行为空，跳过")
-            skipped_count += 1
-            continue
+        if isinstance(raw_value, str) and raw_value.strip() != "":
+            try:
+                relation_json = json.loads(raw_value)
+                relation_list = relation_json.get("关系事实", [])
 
-        try:
-            relation_json = json.loads(raw_value)
-            relation_list = relation_json["关系事实"]
-        except Exception as e:
-            print(f"[!] 第{idx + 1}行解析失败：{e}")
-            skipped_count += 1
-            continue
+                for relation in relation_list:
+                    head_text = relation["头实体"]["文本"]
+                    head_type = relation["头实体"]["类型"]
+                    rel_text  = relation["关系"]["文本"]
+                    tail_text = relation["尾实体"]["文本"]
+                    tail_type = relation["尾实体"]["类型"]
 
-        for relation in relation_list:
-            head_text = relation["头实体"]["文本"]
-            head_type = relation["头实体"]["类型"]
-            rel_text  = relation["关系"]["文本"]
-            tail_text = relation["尾实体"]["文本"]
-            tail_type = relation["尾实体"]["类型"]
+                    # 每次都生成新的唯一实体 ID
+                    head_id = config.generate_entity_id(sequence_id, head_text)
+                    tail_id = config.generate_entity_id(sequence_id, tail_text)
 
-            # 每次都生成新的唯一实体 ID
-            head_id = config.generate_entity_id(sequence_id, head_text)
-            tail_id = config.generate_entity_id(sequence_id, tail_text)
+                    entity_nodes.append({"id": head_id, "text": head_text, "type": head_type})
+                    entity_nodes.append({"id": tail_id, "text": tail_text, "type": tail_type})
 
-            entity_nodes.append({"id": head_id, "text": head_text, "type": head_type})
-            entity_nodes.append({"id": tail_id, "text": tail_text, "type": tail_type})
+                    edge_list.append({"start": head_id, "rel": rel_text, "end": tail_id})
+                    edge_list.append({"start": sequence_id, "rel": "include", "end": head_id})
+                    edge_list.append({"start": sequence_id, "rel": "include", "end": tail_id})
 
-            edge_list.append({
-                "start": head_id,
-                "rel": rel_text,
-                "end": tail_id
-            })
+                processed_relations = True
 
-            edge_list.append({"start": sequence_id, "rel": "include", "end": head_id})
-            edge_list.append({"start": sequence_id, "rel": "include", "end": tail_id})
+            except Exception as e:
+                print(f"[!] 第{idx + 1}行解析失败：{e}")
+                skipped_count += 1
+        else:
+            print(f"[!] 第{idx + 1}行关系为空，仅构建顺序链")
 
-        # 连接顺序节点
+        # 无论有没有实体，都连接顺序节点
         if last_sequence_id:
             edge_list.append({
                 "start": last_sequence_id,
@@ -67,8 +73,10 @@ def process_relations_and_generate_graph_data():
             })
         last_sequence_id = sequence_id
 
-    print(f"处理完成，共跳过空行或异常行 {skipped_count} 条。")
+    print(f"处理完成，共跳过异常关系数据 {skipped_count} 条。")
+    print(f"共构建顺序节点 {len(sequence_nodes)} 个。")
     return sequence_nodes, entity_nodes, edge_list
+
 
 
 
@@ -93,10 +101,12 @@ def import_graph_to_neo4j(sequence_nodes, entity_nodes, edge_list):
             session.run(
                 """
                 MERGE (s:Sequence {id: $id})
-                SET s.type = $type
+                SET s.type = $type,
+                    s.text = $text
                 """,
                 id=node["id"],
-                type=node["type"]
+                type=node["type"],
+                text=node.get("text", "")
             )
 
         # 创建边（动态关系名）
