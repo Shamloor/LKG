@@ -1,3 +1,6 @@
+import json
+import os
+
 import pandas as pd
 from neo4j import GraphDatabase
 from openai import OpenAI
@@ -16,6 +19,8 @@ PROCESSED_FILE_PATH = "DATA/processed/tmp.csv"
 
 CSV_DELIMITER = "|"
 CSV_ENCODING = "utf-8-sig"
+
+MEMORY_TABLE_PATH = "memory_table.json"
 
 def llm_api(prompt):
     response = CLIENT.chat.completions.create(
@@ -63,10 +68,15 @@ def neo4j_connection():
 )
 
 def generate_entity_id(sequence_id, text):
-    """
-    基于 sequence_id + 实体文本 生成稳定唯一的哈希 ID
-    用于上下文敏感实体识别（即使 text 一样，不同行也不同）
-    """
     raw = f"{sequence_id}::{text.strip()}"
     return hashlib.sha1(raw.encode('utf-8')).hexdigest()
 
+def load_memory_table():
+    if os.path.exists(MEMORY_TABLE_PATH):
+        with open(MEMORY_TABLE_PATH, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return []
+
+def save_memory_table(memory_table):
+    with open(MEMORY_TABLE_PATH, "w", encoding="utf-8") as f:
+        json.dump(memory_table, f, ensure_ascii=False, indent=2)
