@@ -1,3 +1,5 @@
+import json
+
 from neo4j import GraphDatabase
 import config
 
@@ -19,85 +21,93 @@ def get_ordered_sequence_nodes(tx):
     result = tx.run(query)
     return [record["n"] for record in result]
 
-def get_entities_for_nodes(tx, node_ids):
+def get_all_entities_for_nodes(tx, node_ids):
     query = """
-    MATCH (s:Sentence)-[:include]->(e:Entity)
-    WHERE id(s) IN $node_ids
-    RETURN id(s) as sentence_id, id(e) as entity_id, e.name as entity_name
+    MATCH (s:Sequence)-[:include]->(e)
+    WHERE s.id IN $node_ids
+    RETURN s.id as sequence_id, e.id as entity_id, e.name as entity_name
     """
     result = tx.run(query, node_ids=node_ids)
-    entity_map = {}
+    entities = []
     for record in result:
-        sid = record["sentence_id"]
-        entity = {
+        entities.append({
+            "sequence_id": record["sequence_id"],
             "entity_id": record["entity_id"],
             "entity_name": record["entity_name"]
+        })
+    return entities
+
+def assign_temp_ids(entities):
+    temp_entities = []
+    for i, entity in enumerate(entities):
+        temp_id = f"e{i + 1}"
+        temp_entities.append({
+            "temp_id": temp_id,
+            "sequence_id": entity.get("sequence_id", ""),
+            "entity_id": entity.get("entity_id", ""),
+            "entity_name": entity.get("entity_name", "")
+        })
+    return temp_entities
+
+def restore_entities(temp_entities):
+    return [
+        {
+            "sequence_id": e.get("sequence_id", ""),
+            "entity_id": e.get("entity_id", ""),
+            "entity_name": e.get("entity_name", "")
         }
-        entity_map.setdefault(sid, []).append(entity)
-    return entity_map
+        for e in temp_entities
+    ]
 
-def build_prompt(texts, entity_map):
-    prompt = "以下是小说中的三句话，请进行代词消解任务：\n\n"
-    for i, text in enumerate(texts):
-        prompt += f"{i+1}. {text}\n"
-    prompt += "\n这些句子中出现的实体包括：\n"
-    for sid, entities in entity_map.items():
-        for entity in entities:
-            prompt += f"- {entity['entity_name']}（entity_id={entity['entity_id']}，出现在句子 {sid}）\n"
-    prompt += "\n请列出每个代词及其指代的实体。\n输出格式：\n代词：[文本]，位置：[顺序节点id]，指代：[实体名]（entity_id）"
-    return prompt
+def pronoun_detection(text, entities):
+    temp_entities = assign_temp_ids(entities)
+    entity_lines = [
+        {"id": e["temp_id"], "name": e["entity_name"]}
+        for e in temp_entities
+    ]
+    entity_json = json.dumps(entity_lines, ensure_ascii=False, indent=2)
 
-def parse_response(response_text):
-    # 简单解析：每行格式：
-    # 代词：[他]，位置：[123]，指代：[拉斯科尔尼科夫]（entity_id=456）
-    results = []
-    for line in response_text.strip().splitlines():
-        try:
-            pronoun = line.split("代词：[")[1].split("]")[0]
-            node_id = int(line.split("位置：[")[1].split("]")[0])
-            alias = line.split("指代：[")[1].split("]")[0]
-            entity_id = int(line.split("entity_id=")[1].split(")")[0])
-            results.append({
-                "pronoun": pronoun,
-                "alias": alias,
-                "node_id": node_id,
-                "entity_id": entity_id
-            })
-        except Exception as e:
-            print(f"解析失败：{line}，错误：{e}")
-    return results
+    prompt = f"""本任务中，凡是用于替代或泛指某一对象/事件的词/短语，都视为“指代表达”。
+    例如：
+    - "他"、"她"、"它"（人称代词）
+    - "这件事"、"那个人"、"某个人"、"年轻人"、"这里"、"那里"（泛指性短语）
+    请在以下实体中判断哪些具有这种“指代表达”功能
+    句子："{text}"
+    该句子中包含的命名实体如下：
+    {entity_json}
+    返回指代表达的命名实体对应的 "id"（JSON 数组）。JSON 格式如下：
+    ["e1", "e5"]
+    请按JSON格式返回纯文本，不要返回Markdown格式内容，不要添加格式以外信息
+    如果无具有指代功能的实体，请返回空列表 []
+    """
 
-def process_initial_windows():
-    global memory_table
-    with driver.session() as session:
-        nodes = session.read_transaction(get_ordered_sequence_nodes)
-        node_ids = [node.id for node in nodes]
-        texts = [node["text"] for node in nodes]
+    response_text = config.llm_api(prompt)
+    print("答案为" + response_text)
+    try:
+        pronoun_ids = json.loads(response_text)
+        filtered = [e for e in temp_entities if e["temp_id"] in pronoun_ids]
+        return restore_entities(filtered)
+    except Exception as e:
+        print(f"[!] JSON解析失败: {e}")
+        print("返回内容:", response_text)
+        return []
 
-        for i in range(len(nodes) - 2):  # 窗口大小为 3
-            window_nodes = nodes[i:i+3]
-            window_ids = [n.id for n in window_nodes]
-            window_texts = [n["text"] for n in window_nodes]
-
-            entity_map = session.read_transaction(get_entities_for_nodes, window_ids)
-            prompt = build_prompt(window_texts, entity_map)
-            response_text = config.llm_api(prompt)
-
-            results = parse_response(response_text)
-            memory_table.extend(results)
-
-            print(f"窗口{i}-{i+2}处理完成，记忆表大小：{len(memory_table)}")
-
-def test_print_sequence_nodes():
+def test_pronoun_detection_from_graph():
     driver = config.neo4j_connection()
+    test_node_ids = ["s1"]
+
     with driver.session() as session:
-        nodes = session.read_transaction(get_ordered_sequence_nodes)
-        print("共获取到顺序节点数量：", len(nodes))
-        for i, node in enumerate(nodes):
-            print(f"{i+1}. {node.get('text')}")
+        entities = session.read_transaction(get_all_entities_for_nodes, test_node_ids)
+
+    text = "7月初，在天气非常炎热的季节，将近傍晚，有个年轻人走出他在某巷二房东那儿租到的小屋，来到街上，慢腾腾往К桥走去，仿佛犹疑不决似的。"
+    result = pronoun_detection(text, entities)
+
+    print("代词识别结果：")
+    if result:
+        for r in result:
+            print(r)
+    else:
+        print("无代词。")
 
 if __name__ == "__main__":
-    test_print_sequence_nodes()
-
-
-
+    test_pronoun_detection_from_graph()
