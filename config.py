@@ -80,3 +80,4 @@ def load_memory_table():
 def save_memory_table(memory_table):
     with open(MEMORY_TABLE_PATH, "w", encoding="utf-8") as f:
         json.dump(memory_table, f, ensure_ascii=False, indent=2)
+
