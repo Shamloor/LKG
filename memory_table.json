@@ -2,20 +2,15 @@
   {
     "memory_id": "m1",
     "name": "年轻人",
-    "alias": [
-      "他"
-    ],
+    "alias": [],
     "entity_id": [
-      "05c39f3bf5e75c85abad156be94e6f08a3d6cb37",
-      "4fd00bd078542a40317843bc4c7ec18545173928",
-      "368402eac5822612d17e8616237c7d26ccd624db"
+      "05c39f3bf5e75c85abad156be94e6f08a3d6cb37"
     ],
     "sequence_id": [
-      "s1",
-      "s2",
-      "s15"
+      "s1"
     ],
-    "frequency": 3
+    "frequency": 1,
+    "description": "故事主人公"
   },
   {
     "memory_id": "m2",
@@ -27,34 +22,28 @@
     "sequence_id": [
       "s1"
     ],
-    "frequency": 1
+    "frequency": 1,
+    "description": ""
   },
   {
     "memory_id": "m3",
     "name": "女房东",
-    "alias": [],
-    "entity_id": [
-      "5dd656e1b8db5afae52c404b44d70fd7e3e47b14"
+    "alias": [
+      "女债主"
     ],
-    "sequence_id": [
-      "s2"
-    ],
-    "frequency": 1
-  },
-  {
-    "memory_id": "m4",
-    "name": "女债主",
-    "alias": [],
     "entity_id": [
+      "e214fc4f3d3328d765fae2aade574519a8990a14",
       "950953729939c56b1afa07af17e50bf2a2f5fc03"
     ],
     "sequence_id": [
+      "s4",
       "s15"
     ],
-    "frequency": 1
+    "frequency": 2,
+    "description": ""
   },
   {
-    "memory_id": "m5",
+    "memory_id": "m4",
     "name": "戈罗赫王",
     "alias": [],
     "entity_id": [
@@ -63,6 +52,7 @@
     "sequence_id": [
       "s21"
     ],
-    "frequency": 1
+    "frequency": 1,
+    "description": ""
   }
 ]

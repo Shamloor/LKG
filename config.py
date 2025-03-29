@@ -81,3 +81,48 @@ def save_memory_table(memory_table):
     with open(MEMORY_TABLE_PATH, "w", encoding="utf-8") as f:
         json.dump(memory_table, f, ensure_ascii=False, indent=2)
 
+# 获取所有顺序结点
+def get_ordered_sequence_nodes(tx):
+    query = """
+    MATCH (start:Sequence)
+    WHERE NOT ()-[:next]->(start)
+    WITH start
+    MATCH path = (start)-[:next*]->(end)
+    UNWIND nodes(path) AS n
+    RETURN DISTINCT n
+    """
+    result = tx.run(query)
+    return [record["n"] for record in result]
+
+# 获取所有对应ID的实体结点
+def get_all_entities_for_nodes(tx, node_ids):
+    query = """
+    MATCH (s:Sequence)-[:include]->(e)
+    WHERE s.id IN $node_ids
+    RETURN s.id as sequence_id, e.id as entity_id, e.name as entity_name, labels(e) as label
+    """
+    result = tx.run(query, node_ids=node_ids)
+    entities = []
+    for record in result:
+        entities.append({
+            "sequence_id": record["sequence_id"],
+            "entity_id": record["entity_id"],
+            "entity_name": record["entity_name"],
+            "label": record["label"]
+        })
+    return entities
+
+# 分配临时ID(大模型用)
+def assign_temp_ids(entities):
+    temp_entities = []
+    for i, entity in enumerate(entities):
+        temp_id = f"e{i + 1}"
+        temp_entities.append({
+            "temp_id": temp_id,
+            "sequence_id": entity.get("sequence_id", ""),
+            "entity_id": entity.get("entity_id", ""),
+            "entity_name": entity.get("entity_name", ""),
+            "label": entity.get("label", "")
+        })
+    return temp_entities
+
